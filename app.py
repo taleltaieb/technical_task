@@ -61,8 +61,7 @@ with tab1:
     fig_age.update_layout(template="plotly_dark")
     st.plotly_chart(fig_age, use_container_width=True)
 
-    fig_age.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_age, use_container_width=True)
+    
 
     fig_price = px.histogram(full_df, x="final_price", nbins=30, title="Price Distribution (€)", color_discrete_sequence=["#FF7F0E"])
     fig_price.update_layout(template="plotly_dark")
