@@ -1,160 +1,102 @@
+# streamlit_app.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from math import ceil
+import numpy as np
 
-st.set_page_config(
-    page_title="📚 Smart Library Dashboard",
-    layout="wide",
-    page_icon="📖"
-)
+# Setup
+st.set_page_config(page_title="Airbus Library Selection", layout="wide", page_icon="📚")
+st.title("📚 Airbus Library Book Selection Dashboard")
+st.markdown("This dashboard showcases the data-driven selection of diverse, high-impact books based on scoring logic, diversity quotas, and pricing strategy.")
 
+# Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("books_enriched_cleaned.csv")
-    df = df[df['language_code'].str.startswith('en')]  # Remove non-English books
-    return df
+    full_df = pd.read_csv("books_enriched_with_final_score.csv")
+    final_df = pd.read_csv("final_selected_books.csv")
+    return full_df, final_df
 
-df = load_data()
+full_df, final_df = load_data()
 
+# Tabs for full dataset and final selection
+tab1, tab2 = st.tabs(["📊 Full Dataset Overview", "🎯 Final 5,000 Selection"])
 
+# TAB 1 - FULL DATA
+with tab1:
+    st.header("📊 Full Dataset (Filtered & Scored)")
 
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Books", f"{len(full_df):,}")
+    col2.metric("Avg. Score", f"{full_df['total_score'].mean():.2f}")
+    col3.metric("Avg. Price (€)", f"{full_df['final_price'].mean():.2f}")
+    col4.metric("Total Budget (€)", f"{full_df['final_price'].sum():,.0f}")
 
+    fig_score = px.histogram(full_df, x="total_score", nbins=30, title="Book Score Distribution", color_discrete_sequence=["#1f77b4"])
+    fig_score.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_score, use_container_width=True)
 
-# ---- SIDEBAR ----
-st.sidebar.markdown("## 🎯 Filter Your Selection")
-if st.sidebar.button("🔁 Reset Filters"):
-    for key in st.session_state.keys():
-        del st.session_state[key]
-        st.session_state.clear()
-    
-    st.rerun()
+    top_genres = full_df["main_genre"].value_counts().nlargest(15).reset_index()
+    top_genres.columns = ["Genre", "Count"]
+    fig_genres = px.bar(top_genres, x="Genre", y="Count", title="Top 15 Genres", color="Count", color_continuous_scale="Viridis")
+    fig_genres.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_genres, use_container_width=True)
 
-top_genres = df['genre'].value_counts().head(30).index.tolist()
-genre_options = st.sidebar.multiselect("Select Genres", options=top_genres, default=None, help="Type to search. Leave empty to include all.")
-price = st.sidebar.slider("💰 Price Range (EUR)", float(df['price'].min()), float(df['price'].max()), (5.0, 25.0))
-rating = st.sidebar.slider("⭐ Rating Range", float(df['average_rating'].min()), float(df['average_rating'].max()), (3.5, 5.0))
-min_pages = st.sidebar.slider("📖 Minimum Pages", int(df['num_pages'].min()), int(df['num_pages'].max()), 100)
-search_title = st.sidebar.text_input("🔎 Search Book Title (optional)")
-max_books = st.sidebar.number_input("Max Books to Display", min_value=10, max_value=1000, value=50)
-fast_mode = st.sidebar.checkbox("⚡ Fast Mode (Skip Visuals)", value=False)
+    top_nats = full_df["author_nationality"].value_counts().nlargest(15).reset_index()
+    top_nats.columns = ["Nationality", "Count"]
+    fig_nats = px.bar(top_nats, x="Nationality", y="Count", title="Top 15 Author Nationalities", color="Count", color_continuous_scale="Plasma")
+    fig_nats.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_nats, use_container_width=True)
 
-# ---- FILTERING ----
-filtered_df = df[
-    ((df['genre'].isin(genre_options)) if genre_options else True) &
-    (df['price'].between(price[0], price[1])) &
-    (df['average_rating'].between(rating[0], rating[1])) &
-    (df['num_pages'] >= min_pages)
-]
-if search_title:
-    filtered_df = filtered_df[filtered_df['title'].str.contains(search_title, case=False)]
-filtered_df = filtered_df.head(int(max_books))
+    age_group_counts = full_df["age_group"].value_counts().reset_index()
+    age_group_counts.columns = ["Age Group", "Count"]
 
-if filtered_df.empty:
-    st.warning("⚠️ No books match your current filters. Try adjusting the genre, rating, or price.")
-    st.stop()
-
-# ---- HEADER ----
-st.title("📚 AI-Powered Library Dashboard")
-st.markdown("Empowering smart book selection with data-driven insights for budget, quality, and diversity.")
-
-# ---- FILTER SUMMARY ----
-with st.expander("🧾 Current Filters Summary"):
-    st.markdown(f"**Genres:** {'All' if not genre_options else ', '.join(genre_options)}")
-    st.markdown(f"**Price Range:** €{price[0]} - €{price[1]}")
-    st.markdown(f"**Rating Range:** {rating[0]} - {rating[1]}")
-    st.markdown(f"**Min Pages:** {min_pages}")
-    if search_title:
-        st.markdown(f"**Title Search:** {search_title}")
-    st.markdown(f"**Max Results:** {max_books}")
-
-# ---- GLOBAL KPIs ----
-st.markdown("## 🔵 General Collection KPIs")
-gk1, gk2, gk3, gk4 = st.columns(4)
-gk1.metric("📘 Total Books", len(df))
-gk2.metric("💸 Budget Potential (€)", f"{df['price'].sum():.2f}")
-gk3.metric("🧠 Avg. Rating", f"{df['average_rating'].mean():.2f}")
-gk4.metric("📖 Avg. Pages", f"{df['num_pages'].mean():.0f}")
-
-# ---- FILTERED KPIs ----
-st.markdown("## 🟢 Filtered Data KPIs")
-fk1, fk2, fk3, fk4 = st.columns(4)
-fk1.metric("📚 Books Selected", len(filtered_df))
-fk2.metric("💰 Selection Cost (€)", f"{filtered_df['price'].sum():.2f}")
-fk3.metric("📊 Avg. Rating", f"{filtered_df['average_rating'].mean():.2f}")
-fk4.metric("📚 Avg. Pages", f"{filtered_df['num_pages'].mean():.0f}")
-
-# ---- SUMMARY INSIGHTS ----
-st.markdown("## 📌 Summary Insights")
-col1, col2, col3, col4 = st.columns(4)
-df_clean = df[~df['genre'].str.lower().isin(['unknown', 'non-classifiable'])]
-
-avg_price_by_genre = df_clean.groupby('genre')['price'].mean().sort_values()
-avg_rating_by_genre = df_clean.groupby('genre')['average_rating'].mean().sort_values(ascending=False)
-cost_per_rating = df_clean.groupby('genre').apply(lambda x: (x['price'] / x['average_rating']).mean()).sort_values()
-
-col1.metric("📗 Cheapest Genre", avg_price_by_genre.index[0], f"€{avg_price_by_genre.iloc[0]:.2f}")
-col2.metric("🌟 Top Rated Genre", avg_rating_by_genre.index[0], f"{avg_rating_by_genre.iloc[0]:.2f}")
-col3.metric("💎 Best Value Genre", cost_per_rating.index[0], f"€{cost_per_rating.iloc[0]:.2f} per⭐")
-
-bestseller = df[df['ratings_count'] == df['ratings_count'].max()].iloc[0]
-col4.metric("🔥 Bestseller", bestseller['title'], f"{bestseller['ratings_count']} ratings")
-
-# ---- TABS ----
-tabs = st.tabs(["📖 Explore Books", "📊 Visual Insights", "📥 Export"])
-
-with tabs[0]:
-    st.subheader("📋 Browse Your Books")
-    books_per_page = 20
-    total_pages = ceil(len(filtered_df) / books_per_page)
-    page = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
-    paginated_df = filtered_df.iloc[(page - 1) * books_per_page : page * books_per_page]
-    st.dataframe(paginated_df[['title', 'authors', 'genre', 'average_rating', 'price', 'num_pages', 'publication_date']], use_container_width=True)
-
-with tabs[1]:
-    if not fast_mode:
-        st.markdown("### 📘 General Trends (Full Dataset)")
-        genre_avg_rating = df_clean.groupby('genre')['average_rating'].mean().sort_values().reset_index().head(15)
-        fig1 = px.bar(genre_avg_rating, x='average_rating', y='genre', orientation='h', title="⭐ Top 15 Genres by Avg Rating", text='average_rating', color='average_rating', color_continuous_scale='Blues')
-        fig1.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-        st.plotly_chart(fig1, use_container_width=True)
-
-        genre_avg_price = df_clean.groupby('genre')['price'].mean().sort_values().reset_index().head(15)
-        fig2 = px.bar(genre_avg_price, x='price', y='genre', orientation='h', title="💰 Top 15 Genres by Avg Price", text='price', color='price', color_continuous_scale='Greens')
-        fig2.update_traces(texttemplate='€%{text:.2f}', textposition='outside')
-        st.plotly_chart(fig2, use_container_width=True)
-
-        st.markdown("### 🟢 Filtered Data Visuals")
-        genre_counts = filtered_df['genre'].value_counts().reset_index()
-        genre_counts.columns = ['genre', 'count']
-        fig3 = px.bar(genre_counts, x='count', y='genre', orientation='h', title='🎨 Genre Distribution (Filtered)', text='count')
-        st.plotly_chart(fig3, use_container_width=True)
-
-        fig4 = px.scatter(
-            filtered_df, x='price', y='average_rating', color='genre',
-            size='num_pages', hover_name='title', size_max=30,
-            hover_data=['genre', 'price', 'average_rating'],
-            title="💵 Price vs ⭐ Rating (Filtered)")
-        st.plotly_chart(fig4, use_container_width=True)
-
-        pub_years_filtered = pd.to_datetime(filtered_df['publication_date'], errors='coerce').dt.year
-        pub_trend = pub_years_filtered.value_counts().reset_index()
-        pub_trend.columns = ['year', 'count']
-        pub_trend = pub_trend.sort_values(by='year')
-        fig5 = px.bar(pub_trend, x='year', y='count', title="📅 Books Published Over Time (Filtered)", text='count')
-        st.plotly_chart(fig5, use_container_width=True)
-
-with tabs[2]:
-    st.subheader("📥 Download Your Current Selection")
-    st.download_button(
-        label="💾 Download CSV",
-        data=filtered_df.to_csv(index=False).encode('utf-8'),
-        file_name="selected_books.csv",
-        mime="text/csv"
+    fig_age = px.bar(
+        age_group_counts,
+        x="Age Group",
+        y="Count",
+        title="Age Group Distribution",
+        color="Count",
+        color_continuous_scale="Inferno"
     )
+    fig_age.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_age, use_container_width=True)
 
-st.markdown("""
----
-✅ Created for the Airbus Data Governance Challenge  
-👤 By **Talel Taieb** | Clear, focused, and actionable data.
-""")
+    fig_age.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_age, use_container_width=True)
+
+    fig_price = px.histogram(full_df, x="final_price", nbins=30, title="Price Distribution (€)", color_discrete_sequence=["#FF7F0E"])
+    fig_price.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_price, use_container_width=True)
+
+    st.markdown("### 🏆 Top 20 Books by Score")
+    top_books = full_df.sort_values("total_score", ascending=False).head(20)
+    st.dataframe(top_books[["title", "authors", "main_genre", "average_rating", "ratings_count", "final_price", "total_score"]], use_container_width=True)
+
+    st.download_button("📥 Download Full Dataset (CSV)", data=full_df.to_csv(index=False).encode("utf-8"), file_name="books_enriched_with_final_score.csv")
+
+# TAB 2 - FINAL SELECTION
+with tab2:
+    st.header("🎯 Final Selection (Top 5,000 with Diversity Quotas)")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Selected Books", f"{len(final_df):,}")
+    col2.metric("Avg. Score", f"{final_df['total_score'].mean():.2f}")
+    col3.metric("Total Budget (€)", f"{final_df['final_price'].sum():,.2f}")
+
+    # Genre chart
+    genre_selection = final_df.groupby("main_genre")["final_price"].agg(["count", "sum"]).reset_index().sort_values("count", ascending=False)
+    fig_genre_select = px.bar(genre_selection, x="main_genre", y="count", color="sum", color_continuous_scale="Blues", labels={"count": "Book Count", "sum": "Total Price (€)", "main_genre": "Genre"}, title="Top Genres in Final Selection")
+    fig_genre_select.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_genre_select, use_container_width=True)
+
+    # Nationality chart
+    nat_selection = final_df.groupby("author_nationality")["final_price"].agg(["count", "sum"]).reset_index().sort_values("count", ascending=False)
+    fig_nat_select = px.bar(nat_selection.head(10), x="author_nationality", y="count", color="sum", color_continuous_scale="Plasma", title="Top 10 Nationalities in Final Selection")
+    fig_nat_select.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_nat_select, use_container_width=True)
+
+    fig_final_score = px.histogram(final_df, x="total_score", nbins=25, title="Score Distribution of Final 5,000 Books", color_discrete_sequence=["#00CC96"])
+    fig_final_score.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_final_score, use_container_width=True)
+
+    st.download_button("📥 Download Final Book Selection (CSV)", data=final_df.to_csv(index=False).encode("utf-8"), file_name="final_selected_books.csv")
